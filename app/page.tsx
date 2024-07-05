@@ -3,19 +3,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { BeerIcon, BotIcon, MoonIcon, StarIcon, SunIcon, WineIcon } from "lucide-react";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
-import { Restaurant } from "./restaurants";
+import { BeerIcon, BotIcon, MoonIcon, StarIcon, SunIcon, UtensilsIcon, WineIcon } from "lucide-react";
 import Link from "next/link";
+import { Restaurant } from "./restaurants";
 
-function getCurrentLatLng(options?: PositionOptions): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, options));
-}
 
 const mapContainerStyle = {
-  width: "75vw",
+  width: "65vw",
   height: "25vh",
 };
+
+function getCurrentLatLng(options?: PositionOptions): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => 
+    navigator.geolocation.getCurrentPosition(resolve, reject, options)
+  );
+}
 
 function geocodeFromLatLng(lat: number, lng: number) {
   const geocoder = new window.google.maps.Geocoder();
@@ -53,10 +56,12 @@ export default function Home() {
     const loadCurrentLocation = async () => {
       const position = await getCurrentLatLng({
         enableHighAccuracy: true,
-        timeout: 5000, // 5 seconds
+        timeout: 3000, // 3 seconds
         maximumAge: 15 * 60 * 1000, // 15 minutes
       });
       const { latitude, longitude } = position.coords;
+      // const latitude = 46.7554633,
+      //   longitude = 23.5671347;
       console.log("location", position.coords);
       setCurrentLocation(new google.maps.LatLng(latitude, longitude));
 
@@ -117,6 +122,7 @@ export default function Home() {
       <Card>
         <CardHeader className="flex items-center">
           <CardTitle>Where to eat?</CardTitle>
+          {!myLocationName && <CardDescription>Loading your GPS location...</CardDescription>}
           {myLocationName && <CardDescription>in {myLocationName}</CardDescription>}
         </CardHeader>
         <CardContent>
@@ -129,6 +135,88 @@ export default function Home() {
               options={{
                 mapTypeControl: false,
                 streetViewControl: false,
+                styles: isDarkMode
+                  ? [
+                      { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+                      { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+                      { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+                      {
+                        featureType: "administrative.locality",
+                        elementType: "labels.text.fill",
+                        stylers: [{ color: "#d59563" }],
+                      },
+                      {
+                        featureType: "poi",
+                        elementType: "labels.text.fill",
+                        stylers: [{ color: "#d59563" }],
+                      },
+                      {
+                        featureType: "poi.park",
+                        elementType: "geometry",
+                        stylers: [{ color: "#263c3f" }],
+                      },
+                      {
+                        featureType: "poi.park",
+                        elementType: "labels.text.fill",
+                        stylers: [{ color: "#6b9a76" }],
+                      },
+                      {
+                        featureType: "road",
+                        elementType: "geometry",
+                        stylers: [{ color: "#38414e" }],
+                      },
+                      {
+                        featureType: "road",
+                        elementType: "geometry.stroke",
+                        stylers: [{ color: "#212a37" }],
+                      },
+                      {
+                        featureType: "road",
+                        elementType: "labels.text.fill",
+                        stylers: [{ color: "#9ca5b3" }],
+                      },
+                      {
+                        featureType: "road.highway",
+                        elementType: "geometry",
+                        stylers: [{ color: "#746855" }],
+                      },
+                      {
+                        featureType: "road.highway",
+                        elementType: "geometry.stroke",
+                        stylers: [{ color: "#1f2835" }],
+                      },
+                      {
+                        featureType: "road.highway",
+                        elementType: "labels.text.fill",
+                        stylers: [{ color: "#f3d19c" }],
+                      },
+                      {
+                        featureType: "transit",
+                        elementType: "geometry",
+                        stylers: [{ color: "#2f3948" }],
+                      },
+                      {
+                        featureType: "transit.station",
+                        elementType: "labels.text.fill",
+                        stylers: [{ color: "#d59563" }],
+                      },
+                      {
+                        featureType: "water",
+                        elementType: "geometry",
+                        stylers: [{ color: "#17263c" }],
+                      },
+                      {
+                        featureType: "water",
+                        elementType: "labels.text.fill",
+                        stylers: [{ color: "#515c6d" }],
+                      },
+                      {
+                        featureType: "water",
+                        elementType: "labels.text.stroke",
+                        stylers: [{ color: "#17263c" }],
+                      },
+                    ]
+                  : undefined,
               }}
             >
               {currentLocation && <Marker position={currentLocation} />}
@@ -151,6 +239,12 @@ export default function Home() {
           {!isAiLoading && results && results.top3 && <TopRestaurants restaurants={results.top3} />}
         </CardContent>
       </Card>
+      <div className="flex justify-center items-center text-sm text-muted-foreground mt-8">
+        Made with ❤️ by{" "}
+        <a href="https://x.com/danmana" target="_blank" className="underline ml-2">
+          @danmana
+        </a>
+      </div>
     </main>
   );
 }
@@ -166,6 +260,7 @@ function starRatingClassName(score: number, stars: number) {
 const TopRestaurants = ({ restaurants }: { restaurants: Restaurant[] }) => {
   return (
     <section className="grid grid-cols-1 gap-6 p-4">
+      {!restaurants.length && <div className="text-center text-muted-foreground">No restaurants found nearby</div>}
       {restaurants.map((restaurant) => (
         <div
           key={restaurant.id}
@@ -176,7 +271,12 @@ const TopRestaurants = ({ restaurants }: { restaurants: Restaurant[] }) => {
           </Link>
           <div className="p-6 bg-background">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold">{restaurant.name}</h3>
+              <h3 className="text-xl font-bold">
+                {restaurant.name}
+
+                {restaurant.detail.serves_beer && <BeerIcon className="w-6 h-6 text-primary ml-1 inline-block" />}
+                {restaurant.detail.serves_wine && <WineIcon className="w-6 h-6 text-primary ml-1 inline-block" />}
+              </h3>
               <div className="flex flex-col items-end gap-1 text-sm font-semibold">
                 <div className="flex items-center gap-1">
                   <BotIcon className={`w-4 h-4 ${starRatingClassName(restaurant.ai.score, 1)}`} />
@@ -196,16 +296,17 @@ const TopRestaurants = ({ restaurants }: { restaurants: Restaurant[] }) => {
                 </div>
               </div>
             </div>
-            {(restaurant.detail.serves_beer || restaurant.detail.serves_wine) && (
-              <div className="flex items-center gap-1">
-                {restaurant.detail.serves_beer && <BeerIcon className="w-6 h-6 text-primary" />}
-                {restaurant.detail.serves_wine && <WineIcon className="w-6 h-6 text-primary" />}
-              </div>
-            )}
+
             {restaurant.ai.bestDish && (
-              <p className="mb-4 text-muted-foreground">The best dish is {restaurant.ai.bestDish}</p>
+              <p className="mb-4 text-muted-foreground">
+                <UtensilsIcon className="w-4 h-4 mr-2 inline-block" />
+                Best dish: {restaurant.ai.bestDish}
+              </p>
             )}
-            <p className="text-sm text-muted-foreground">The AI bot says: {restaurant.ai.reason}</p>
+            <p className="mb-4 text-muted-foreground">
+              <BotIcon className="w-4 h-4 mr-2 inline-block" />
+              {restaurant.ai.reason}
+            </p>
           </div>
         </div>
       ))}

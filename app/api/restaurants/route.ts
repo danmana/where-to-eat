@@ -1,5 +1,5 @@
-import { Client, PlacesNearbyResponseData } from "@googlemaps/google-maps-services-js";
 import { openai } from "@ai-sdk/openai";
+import { Client, PlacesNearbyResponseData } from "@googlemaps/google-maps-services-js";
 import { generateObject } from "ai";
 import { z } from "zod";
 const client = new Client({});
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   const lng = +searchParams.get("lng")!;
 
   console.time("placesNearby");
-  const places = (
+  let places = (
     await client.placesNearby({
       params: {
         location: {
@@ -58,10 +58,26 @@ export async function GET(request: Request) {
       },
     })
   ).data.results;
+  if (!places.length) {
+    places = (
+      await client.placesNearby({
+        params: {
+          location: {
+            lat,
+            lng,
+          },
+          radius: 10_000,
+          type: "restaurant",
+          opennow: true,
+          key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY!,
+        },
+      })
+    ).data.results;
+  }
   console.timeEnd("placesNearby");
 
   // pick the top restaurants by bayesian average rating
-  const topByGoogleRatings = sortItemsByBayesianAverage(places).slice(0, 7);
+  const topByGoogleRatings = sortItemsByBayesianAverage(places).slice(0, 6);
 
   console.time("placeDetails");
   const details = await Promise.all(
@@ -91,7 +107,8 @@ export async function GET(request: Request) {
   );
   console.timeEnd("placeDetails");
 
-  const prompt = `Score the following restaurants based on their quality of service.
+  if (details.length) {
+    const prompt = `Score the following restaurants based on their quality of service.
 Scores should range between 1 and 5, with higher scores indicating better service. The higher the score, the better the service.
 Take into account the restaurant description and user reviews.
 You can use the google rating to break ties, but it should not be the only factor in your score.
@@ -108,9 +125,10 @@ If available in the review, add the best dish (the one with the highest rated re
 When giving the score, add a single sentence with the reason for the score.
 The reason should be a very short sentence containing the main reason for the score.
 Do not use boilerplate text like "Excellent reviews", focus instead on the main atomic reason for the score.
+You can use emojis to add emotion to the reason, but don't overuse them. If no emoji is appropriate, don't use them.
 Examples of good reasons:
-- score 4.9: good authentic Romanian food
-- score 3.8: good food, but slow and grumpy service
+- score 4.9: Good authentic 🇷🇴 Romanian food 
+- score 3.8: Good food, but slow and grumpy service
 Examples of bad reasons:
 - Excellent reviews highlight authentic Romanian food, attentive staff, and great value for money. // too verbose
 - Generally good reviews for food and service, but notable complaints about slow and grumpy service. // too long, avoid general statements
@@ -118,11 +136,11 @@ Examples of bad reasons:
 
 More examples:
 A restaurant with description "Relaxed units with kitchens in an unassuming apartment hotel offering a restaurant."
-score: 1.2, reason: not a stand-alone restaurant, it is part of a hotel
+score: 2.1, reason: not a restaurant, it is part of a hotel
 
 Example:
 A restaurant with user review "It seems unreal to me how you can't cook decent rice, it was so bad that I had to throw it away" should have
-score: 1, the food is incredibly bad
+score: 1, The food is incredibly bad 🤮
 
 Restaurants:
 
@@ -141,58 +159,72 @@ ${detail.reviews?.map((review) => `- rating ${review.rating}/5, review: ${review
       .join("\n")}
 `;
 
-  console.log(prompt);
+    console.log(prompt);
 
-  console.time("ai");
-  const {
-    object: { scores },
-  } = await generateObject({
-    model: openai("gpt-4o"),
-    schema: z.object({
-      scores: z.array(
-        z.object({
-          id: z.string(),
-          name: z.string(),
-          score: z.number(),
-          reason: z.string(),
-          bestDish: z.string(),
-        })
-      ),
-    }),
-    prompt,
-  });
-  console.timeEnd("ai");
+    console.time("ai");
 
-  const restaurants = scores.map((score) => {
-    const detail = details.find((detail) => detail.place_id === score.id);
-    const place = topByGoogleRatings.find((place) => place.place_id === score.id);
-    return {
-      id: score.id,
-      name: detail?.name || place?.name || score.name,
-      detail,
-      place,
-      ai: {
-        score: score.score,
-        reason: score.reason,
-        bestDish: score.bestDish,
-      },
-      bayesianRating: place?.bayesianRating,
-    };
-  });
+    const {
+      object: { scores },
+    } = await generateObject({
+      model: openai("gpt-4o"),
+      schema: z.object({
+        scores: z.array(
+          z.object({
+            id: z.string(),
+            name: z.string(),
+            score: z.number(),
+            reason: z.string(),
+            bestDish: z.string(),
+          })
+        ),
+      }),
+      prompt,
+    });
 
-  // sort by ai score descending, rating descending
-  restaurants.sort((a, b) => {
-    const aiCmp = b.ai.score - a.ai.score;
-    const bayesianRatingCmp = (b.bayesianRating || 0) - (a.bayesianRating || 0);
-    const ratingCmp = (b.detail?.rating || 0) - (a.detail?.rating || 0);
-    return aiCmp || bayesianRatingCmp || ratingCmp;
-  });
+    console.timeEnd("ai");
+
+    const restaurants = scores.map((score) => {
+      const detail = details.find((detail) => detail.place_id === score.id);
+      const place = topByGoogleRatings.find((place) => place.place_id === score.id);
+      return {
+        id: score.id,
+        name: detail?.name || place?.name || score.name,
+        detail,
+        place,
+        ai: {
+          score: score.score,
+          reason: score.reason,
+          bestDish: score.bestDish,
+        },
+        bayesianRating: place?.bayesianRating,
+      };
+    });
+
+    // sort by ai score descending, rating descending
+    restaurants.sort((a, b) => {
+      const aiCmp = b.ai.score - a.ai.score;
+      const bayesianRatingCmp = (b.bayesianRating || 0) - (a.bayesianRating || 0);
+      const ratingCmp = (b.detail?.rating || 0) - (a.detail?.rating || 0);
+      return aiCmp || bayesianRatingCmp || ratingCmp;
+    });
+
+    return Response.json({
+      top3: restaurants.slice(0, 3),
+      topByGoogleRatings,
+      restaurants,
+      scores,
+      details,
+      places,
+      lat,
+      lng,
+    });
+  }
 
   return Response.json({
-    top3: restaurants.slice(0, 3),
+    top3: [],
     topByGoogleRatings,
-    restaurants,
-    scores,
+    restaurants: [],
+    scores: [],
     details,
     places,
     lat,
