@@ -3,8 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { MoonIcon, SunIcon } from "lucide-react";
+import { BotIcon, MoonIcon, StarIcon, SunIcon } from "lucide-react";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
+import { Restaurant } from "./restaurants";
+import Link from "next/link";
 
 function getCurrentLatLng(options?: PositionOptions): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, options));
@@ -44,6 +46,9 @@ export default function Home() {
   const [currentLocation, setCurrentLocation] = useState<google.maps.LatLng | null>(null);
   const [neighborhood, setNeighborhood] = useState<google.maps.GeocoderResult | null>(null);
   const [city, setCity] = useState<google.maps.GeocoderResult | null>(null);
+
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [results, setResults] = useState<{ top3: Restaurant[] } | null>(null);
   useEffect(() => {
     const loadCurrentLocation = async () => {
       const position = await getCurrentLatLng({
@@ -52,9 +57,12 @@ export default function Home() {
         maximumAge: 15 * 60 * 1000, // 15 minutes
       });
       const { latitude, longitude } = position.coords;
+      console.log("location", position.coords);
+      setCurrentLocation(new google.maps.LatLng(latitude, longitude));
+
       const geocodes = await geocodeFromLatLng(latitude, longitude);
       if (geocodes) {
-        setCurrentLocation(new google.maps.LatLng(latitude, longitude));
+        console.log("geocodes", geocodes);
         setNeighborhood(geocodes.find((geocode) => geocode.types.includes("neighborhood")) ?? null);
         setCity(geocodes.find((geocode) => geocode.types.includes("locality")) ?? null);
       }
@@ -78,6 +86,23 @@ export default function Home() {
     if (isLoaded && map && currentLocation) {
       map.setCenter(currentLocation);
       map.setZoom(14);
+      setIsAiLoading(true);
+      fetch(
+        `/api/restaurants?${new URLSearchParams({
+          lat: String(currentLocation.lat()),
+          lng: String(currentLocation.lng()),
+        }).toString()}`
+      )
+        .then((res) => res.json())
+        .then((results) => {
+          console.log("results", results);
+          setResults(results);
+          setIsAiLoading(false);
+        })
+        .catch((err) => {
+          console.error(err);
+          setIsAiLoading(false);
+        });
     }
   }, [isLoaded, map, currentLocation]);
 
@@ -107,10 +132,78 @@ export default function Home() {
               }}
             >
               {currentLocation && <Marker position={currentLocation} />}
+              {results &&
+                results.top3.map((restaurant) =>
+                  restaurant.place?.geometry?.location ? (
+                    <Marker
+                      key={restaurant.id}
+                      position={restaurant.place.geometry.location}
+                      icon={{
+                        url: restaurant.place.icon!,
+                        scaledSize: new google.maps.Size(16, 16),
+                      }}
+                    />
+                  ) : null
+                )}
             </GoogleMap>
           )}
+          {isAiLoading && <div>Loading...</div>}
+          {!isAiLoading && results && results.top3 && <TopRestaurants restaurants={results.top3} />}
         </CardContent>
       </Card>
     </main>
   );
 }
+
+function starRatingClassName(score: number, stars: number) {
+  if (score >= stars - 0.5) {
+    return "fill-primary stroke-black";
+  } else {
+    return "fill-none stroke-muted-foreground";
+  }
+}
+
+const TopRestaurants = ({ restaurants }: { restaurants: Restaurant[] }) => {
+  return (
+    <section className="grid grid-cols-1 gap-6 p-4">
+      {restaurants.map((restaurant) => (
+        <div className="relative overflow-hidden transition-transform duration-300 ease-in-out rounded-lg shadow-lg group hover:shadow-xl hover:-translate-y-2">
+          <Link href={restaurant.detail.url} className="absolute inset-0 z-10" prefetch={false} target="_blank">
+            <span className="sr-only">View</span>
+          </Link>
+          <div className="p-6 bg-background">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold">{restaurant.name}</h3>
+              <div className="flex flex-col items-end gap-1 text-sm font-semibold">
+                <div className="flex items-center gap-1">
+                  <BotIcon className={`w-4 h-4 ${starRatingClassName(restaurant.ai.score, 1)}`} />
+                  <BotIcon className={`w-4 h-4 ${starRatingClassName(restaurant.ai.score, 2)}`} />
+                  <BotIcon className={`w-4 h-4 ${starRatingClassName(restaurant.ai.score, 3)}`} />
+                  <BotIcon className={`w-4 h-4 ${starRatingClassName(restaurant.ai.score, 4)}`} />
+                  <BotIcon className={`w-4 h-4 ${starRatingClassName(restaurant.ai.score, 5)}`} />
+                  <span className="text-muted-foreground">{restaurant.ai.score}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <StarIcon className={`w-4 h-4 ${starRatingClassName(restaurant.detail.rating, 1)}`} />
+                  <StarIcon className={`w-4 h-4 ${starRatingClassName(restaurant.detail.rating, 2)}`} />
+                  <StarIcon className={`w-4 h-4 ${starRatingClassName(restaurant.detail.rating, 3)}`} />
+                  <StarIcon className={`w-4 h-4 ${starRatingClassName(restaurant.detail.rating, 4)}`} />
+                  <StarIcon className={`w-4 h-4 ${starRatingClassName(restaurant.detail.rating, 5)}`} />
+                  <span className="text-muted-foreground">{restaurant.detail.rating}</span>
+                </div>
+              </div>
+            </div>
+            {restaurant.ai.bestDish && (
+            <p className="mb-4 text-muted-foreground">
+              The best dish is {restaurant.ai.bestDish}
+            </p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              The AI bot says: {restaurant.ai.reason}
+            </p>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+};
