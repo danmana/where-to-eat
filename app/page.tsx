@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { BotIcon, MoonIcon, StarIcon, SunIcon } from "lucide-react";
+import { BeerIcon, BotIcon, MoonIcon, StarIcon, SunIcon, WineIcon } from "lucide-react";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
 import { Restaurant } from "./restaurants";
 import Link from "next/link";
@@ -167,7 +167,10 @@ const TopRestaurants = ({ restaurants }: { restaurants: Restaurant[] }) => {
   return (
     <section className="grid grid-cols-1 gap-6 p-4">
       {restaurants.map((restaurant) => (
-        <div className="relative overflow-hidden transition-transform duration-300 ease-in-out rounded-lg shadow-lg group hover:shadow-xl hover:-translate-y-2">
+        <div
+          key={restaurant.id}
+          className="relative overflow-hidden transition-transform duration-300 ease-in-out rounded-lg shadow-lg group hover:shadow-xl hover:-translate-y-2"
+        >
           <Link href={restaurant.detail.url} className="absolute inset-0 z-10" prefetch={false} target="_blank">
             <span className="sr-only">View</span>
           </Link>
@@ -193,14 +196,16 @@ const TopRestaurants = ({ restaurants }: { restaurants: Restaurant[] }) => {
                 </div>
               </div>
             </div>
-            {restaurant.ai.bestDish && (
-            <p className="mb-4 text-muted-foreground">
-              The best dish is {restaurant.ai.bestDish}
-            </p>
+            {(restaurant.detail.serves_beer || restaurant.detail.serves_wine) && (
+              <div className="flex items-center gap-1">
+                {restaurant.detail.serves_beer && <BeerIcon className="w-6 h-6 text-primary" />}
+                {restaurant.detail.serves_wine && <WineIcon className="w-6 h-6 text-primary" />}
+              </div>
             )}
-            <p className="text-sm text-muted-foreground">
-              The AI bot says: {restaurant.ai.reason}
-            </p>
+            {restaurant.ai.bestDish && (
+              <p className="mb-4 text-muted-foreground">The best dish is {restaurant.ai.bestDish}</p>
+            )}
+            <p className="text-sm text-muted-foreground">The AI bot says: {restaurant.ai.reason}</p>
           </div>
         </div>
       ))}
