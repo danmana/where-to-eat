@@ -166,7 +166,7 @@ ${detail.reviews?.map((review) => `- rating ${review.rating}/5, review: ${review
     const {
       object: { scores },
     } = await generateObject({
-      model: openai("gpt-4o"),
+      model: openai("gpt-4o-mini"),
       schema: z.object({
         scores: z.array(
           z.object({
